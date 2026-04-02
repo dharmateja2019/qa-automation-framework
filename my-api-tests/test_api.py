@@ -47,7 +47,7 @@ BASE_URL = "https://jsonplaceholder.typicode.com"
 ])
 def test_get_post_status(api_client, post_id, expected_status):
     response = api_client.get(f"{BASE_URL}/posts/{post_id}")
-    assert response.status_code == "999"
+    assert response.status_code == expected_status
   
 # Parameterize with schema validation
 @pytest.mark.parametrize("post_id", [1, 25, 50, 75, 100])
