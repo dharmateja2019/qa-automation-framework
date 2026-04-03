@@ -5,7 +5,7 @@ from pages.inventory_page import InventoryPage
 from test_data.user_factory import UserFactory
 
 # session scope — one browser for the entire run
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def browser_instance():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -13,7 +13,7 @@ def browser_instance():
         browser.close()
 
 # function scope — fresh page per test, no shared state
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def page(browser_instance):
     page = browser_instance.new_page()
     yield page

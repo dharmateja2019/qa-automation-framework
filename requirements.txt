@@ -2,3 +2,4 @@ pytest-playwright
 pytest
 pytest-html
 httpx
+pytest-xdist

@@ -2,6 +2,8 @@
 # from pages.inventory_page import InventoryPage
 import pytest
 
+from test_data.user_factory import UserFactory
+
 def test_inventory_loads_six_products(inventory_page,page):
     
     assert inventory_page.get_product_count() == 6
@@ -17,3 +19,9 @@ def test_add_to_cart_updates_badge(inventory_page,page):
 
     cart_badge = page.locator(".shopping_cart_badge")
     assert cart_badge.text_content() == "1"
+
+@pytest.mark.slow
+def test_performance_glitch_user(login_page, page):
+    user = UserFactory.slow()
+    login_page.login(user.username, user.password)
+    assert page.url == "https://www.saucedemo.com/inventory.html"

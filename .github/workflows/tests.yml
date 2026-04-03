@@ -36,7 +36,7 @@ jobs:
 
       # 6. Run UI tests
       - name: Run UI tests
-        run: pytest pom_project/tests/ -v --browser chromium --screenshot=only-on-failure --html=ui-report.html --self-contained-html
+        run: pytest pom_project/tests/ -v --browser chromium -n auto --screenshot=only-on-failure --html=ui-report.html --self-contained-html
 
       # 7. Upload reports (both)
       - name: Upload API test report
