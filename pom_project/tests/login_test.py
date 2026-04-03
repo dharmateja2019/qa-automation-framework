@@ -1,5 +1,5 @@
 import pytest
-from pages.login_page import LoginPage
+# from pages.login_page import LoginPage
 
 def test_valid_login(login_page, page):
     login_page.login("standard_user", "secret_sauce")

@@ -1,5 +1,6 @@
-from pages.login_page import LoginPage
-from pages.inventory_page import InventoryPage
+# from pages.login_page import LoginPage
+# from pages.inventory_page import InventoryPage
+import pytest
 
 def test_inventory_loads_six_products(inventory_page,page):
     
