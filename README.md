@@ -1,6 +1,6 @@
 # QA Automation Portfolio — Pytest + httpx + Playwright + GitHub Actions
 
-A production-style test automation framework built with Python, demonstrating real-world patterns used in SDET roles at MNCs. Built progressively — API testing first, then UI automation with Page Object Model.
+A production-style test automation framework built with Python, demonstrating real-world patterns used in SDET roles at MNCs. Built progressively — API testing, UI automation with POM, fixture scopes, and factory pattern for test data.
 
 ## What this project covers
 
@@ -8,7 +8,8 @@ A production-style test automation framework built with Python, demonstrating re
 - Parametrized test scenarios (happy path, negative cases, schema validation)
 - UI automation with Playwright and Page Object Model (POM)
 - Multi-page object chaining (login → inventory flow)
-- Function-scoped and session-scoped fixtures via `conftest.py`
+- Fixture scopes — session for browser, function for page
+- Factory pattern for centralised test data management
 - Automated CI pipeline with GitHub Actions — two parallel jobs
 - HTML test reports uploaded as pipeline artifacts per job
 
@@ -27,24 +28,30 @@ A production-style test automation framework built with Python, demonstrating re
 
 ```
 ApiTesting/
-├── requirements.txt             # API/UI test dependencies (pytest, playwright, pytest-html, httpx)
+├── requirements.txt                  # UI test dependencies
+├── pytest.ini                        # minimal pytest config
 │
 ├── my-api-tests/
-│   ├── conftest.py              # session-scoped API client fixture
-│   └── test_api.py              # API test cases
+│   ├── conftest.py                   # session-scoped API client fixture
+│   ├── requirements.txt              # API test dependencies
+│   └── test_api.py                   # API test cases
 │
 ├── pom_project/
 │   ├── pages/
-│   │   ├── login_page.py        # login page actions and locators
-│   │   └── inventory_page.py    # inventory page actions and locators
+│   │   ├── login_page.py             # login page actions and locators
+│   │   └── inventory_page.py         # inventory page actions and locators
+│   ├── test_data/
+│   │   ├── user_factory.py           # User dataclass + UserFactory
+│   │   └── product_factory.py        # Product dataclass + ProductFactory
 │   └── tests/
-│       ├── login_test.py        # login scenarios
-│       └── test_inventory.py    # inventory scenarios
-│   ├── conftest.py          # login_page and inventory_page fixtures
+│       ├── conftest.py               # browser, page, login_page, inventory_page fixtures
+│       ├── login_test.py             # login scenarios using UserFactory
+│       ├── test_inventory.py         # inventory scenarios
+│       └── test_scope_experiments.py # fixture scope demonstration
 │
 └── .github/
     └── workflows/
-        └── tests.yml            # CI pipeline — api-tests and ui-tests run in parallel
+        └── tests.yml                 # CI pipeline — api-tests and ui-tests in parallel
 ```
 
 ## How to run locally
@@ -60,6 +67,7 @@ cd ApiTesting
 
 ```bash
 pip install -r requirements.txt
+pip install -r my-api-tests/requirements.txt
 playwright install chromium
 ```
 
@@ -84,8 +92,6 @@ pytest my-api-tests/test_api.py -v --html=api-report.html --self-contained-html
 # UI
 pytest pom_project/tests/ -v --browser chromium --html=ui-report.html --self-contained-html
 ```
-
-Open the generated `.html` file in your browser to view results.
 
 ---
 
@@ -168,20 +174,87 @@ Tests run against [SauceDemo](https://www.saucedemo.com) — a demo e-commerce s
 
 **No assertions in page classes** — page objects describe what a page _can do_, not what _should be true_. Assertions live exclusively in test files. This means a page class never fails for the wrong reason.
 
-**Locators defined once** — all selectors are in the page class constructor. If the UI changes, you update one place, not every test.
+**Locators defined once** — all selectors live in the page class constructor. If the UI changes, you update one place, not every test.
 
 **Fixture handles navigation** — tests don't call `navigate()` or `login()` manually. The `inventory_page` fixture handles full setup so each test starts at the right state:
 
 ```python
 @pytest.fixture(scope="function")
 def inventory_page(page):
+    user = UserFactory.standard()
     lp = LoginPage(page)
     lp.navigate()
-    lp.login("standard_user", "secret_sauce")
+    lp.login(user.username, user.password)
     return InventoryPage(page)
 ```
 
-**Page chaining** — the same `page` object passes through multiple page objects, reflecting the real browser session. LoginPage and InventoryPage both operate on the same browser context.
+**Page chaining** — the same `page` object passes through multiple page objects, reflecting the real browser session.
+
+---
+
+## Module 3 — Fixture scopes
+
+Demonstrates the impact of fixture scope on test isolation and suite speed.
+
+### The four scopes
+
+| Scope      | Created          | Destroyed                | Use for                           |
+| ---------- | ---------------- | ------------------------ | --------------------------------- |
+| `function` | Before each test | After each test          | Page objects, anything with state |
+| `module`   | Once per file    | After last test in file  | File-level shared resources       |
+| `session`  | Once per run     | After all tests finish   | Browser instance, HTTP client     |
+| `class`    | Once per class   | After last test in class | OOP-heavy suites                  |
+
+### The rule
+
+Ask one question — _can this resource be safely shared between tests without one test affecting another?_
+
+- Browser instance → session scope. Expensive to create, stateless between tests.
+- Page object → function scope. Cheap to create, carries state (URL, cookies, cart).
+
+Mixing these up causes state bleed — test A's actions leak into test B's starting state, causing random failures that are hard to debug in isolation.
+
+---
+
+## Module 4 — Factory pattern for test data
+
+### The problem
+
+Hardcoded credentials and test data scattered across 50 test files. One environment change = 50 files to update.
+
+### The solution
+
+Factories build objects with sensible defaults. Tests only specify what is _different_ for their scenario:
+
+```python
+# instead of this in every test
+login.login("standard_user", "secret_sauce")
+
+# tests now say what's different, not the whole object
+user = UserFactory.build(password="wrong_password")
+login.login(user.username, user.password)
+```
+
+### Factories built
+
+**UserFactory** — standard user, locked user, slow user, and a `build()` method for custom overrides:
+
+```python
+user = UserFactory.standard()          # default valid user
+user = UserFactory.locked()            # locked out user
+user = UserFactory.build(username="")  # custom — only override what matters
+```
+
+**ProductFactory** — first product, and a `build()` method for custom product data:
+
+```python
+product = ProductFactory.first()                    # default first product
+product = ProductFactory.build(price=9.99)          # custom price override
+```
+
+### Why this matters
+
+Credentials and test objects are defined in one place. A environment credential change requires updating one file, not every test. Tests become more readable — they describe the scenario, not the setup.
 
 ---
 
@@ -193,35 +266,34 @@ Two jobs run in parallel on every push to `main` and every pull request.
 
 1. Checkout code
 2. Set up Python 3.13
-3. Install API dependencies (`pytest`, `httpx`, `pytest-html`)
-4. Run API tests with verbose output
+3. Install API dependencies
+4. Run API tests
 5. Upload `api-report.html` as artifact
 
 ### ui-tests job
 
 1. Checkout code
 2. Set up Python 3.13
-3. Install UI dependencies (`pytest`, `pytest-playwright`, `pytest-html`)
+3. Install UI dependencies
 4. Install Playwright Chromium with system dependencies (`--with-deps`)
 5. Run UI tests in headless Chromium
 6. Upload `ui-report.html` as artifact
 
-Both reports downloadable from **Actions** → select a run → **Artifacts**.
-
 ### Important lessons learned
 
 - `pytest.ini` addopts must not contain Playwright-specific flags — they apply globally and break non-Playwright jobs
-- `playwright install chromium --with-deps` is required on Ubuntu CI runners — system-level browser dependencies are not pre-installed
-- All packages must be in `requirements.txt` — CI spins up a clean container on every run, local virtual environments don't carry over
+- `playwright install chromium --with-deps` is required on Ubuntu CI — system browser dependencies are not pre-installed
+- All packages must be in `requirements.txt` — CI spins up a clean container every run
 
 ---
 
 ## Testing strategy applied
 
-- **Test pyramid** — API tests cover the integration layer (fast, no browser). UI tests cover only critical E2E flows at the top of the pyramid.
-- **Shift-left** — CI runs on every PR, catching failures before merge, not after release.
-- **Risk-based** — login and cart flows automated first as highest business impact scenarios.
-- **POM separation of concerns** — page layer owns locators and actions, test layer owns assertions and scenarios.
+- **Test pyramid** — API tests at integration layer, UI tests only for critical E2E flows
+- **Shift-left** — CI runs on every PR, not just before release
+- **Risk-based** — login and cart flows automated first as highest business impact
+- **POM separation of concerns** — page layer owns locators and actions, test layer owns assertions
+- **Factory pattern** — test data centralised, tests declare intent not setup
 
 ---
 
