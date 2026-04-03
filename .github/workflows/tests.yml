@@ -1,4 +1,4 @@
-name: API Tests
+name: QA Automation Suite
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  api-tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,17 +17,45 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install dependencies
         run: pip install -r my-api-tests/requirements.txt
 
       - name: Run API tests
-        run: pytest my-api-tests/test_api.py -v --html=report.html --self-contained-html
+        run: pytest my-api-tests/test_api.py -v --html=api-report.html --self-contained-html
 
-      - name: Upload test report
+      - name: Upload API test report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-report
-          path: report.html
+          name: api-test-report
+          path: api-report.html
+
+  ui-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Run UI tests
+        run: pytest pom_project/tests/ -v --html=ui-report.html --self-contained-html
+
+      - name: Upload UI test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-test-report
+          path: ui-report.html
