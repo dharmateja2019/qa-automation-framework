@@ -9,8 +9,8 @@ A production-style test automation framework built with Python, demonstrating re
 - UI automation with Playwright and Page Object Model (POM)
 - Multi-page object chaining (login → inventory flow)
 - Function-scoped and session-scoped fixtures via `conftest.py`
-- Automated CI pipeline with GitHub Actions
-- HTML test reports uploaded as pipeline artifacts
+- Automated CI pipeline with GitHub Actions — two parallel jobs
+- HTML test reports uploaded as pipeline artifacts per job
 
 ## Tech stack
 
@@ -27,12 +27,12 @@ A production-style test automation framework built with Python, demonstrating re
 
 ```
 ApiTesting/
-├── conftest.py                  # shared fixtures for all test modules
-├── pytest.ini                   # pytest config (headless mode, base options)
-├── requirements.txt             # all dependencies
+├── requirements.txt             # UI test dependencies (pytest, playwright, pytest-html)
+├── pytest.ini                   # minimal pytest config (no global addopts)
 │
 ├── my-api-tests/
 │   ├── conftest.py              # session-scoped API client fixture
+│   ├── requirements.txt         # API test dependencies (pytest, httpx, pytest-html)
 │   └── test_api.py              # API test cases
 │
 ├── pom_project/
@@ -40,12 +40,13 @@ ApiTesting/
 │   │   ├── login_page.py        # login page actions and locators
 │   │   └── inventory_page.py    # inventory page actions and locators
 │   └── tests/
+│       ├── conftest.py          # login_page and inventory_page fixtures
 │       ├── login_test.py        # login scenarios
 │       └── test_inventory.py    # inventory scenarios
 │
 └── .github/
     └── workflows/
-        └── tests.yml            # CI pipeline definition
+        └── tests.yml            # CI pipeline — api-tests and ui-tests run in parallel
 ```
 
 ## How to run locally
@@ -61,6 +62,7 @@ cd ApiTesting
 
 ```bash
 pip install -r requirements.txt
+pip install -r my-api-tests/requirements.txt
 playwright install chromium
 ```
 
@@ -70,19 +72,23 @@ playwright install chromium
 pytest my-api-tests/test_api.py -v
 ```
 
-**4. Run UI tests (headless)**
+**4. Run UI tests**
 
 ```bash
-pytest pom_project/tests/ -v
+pytest pom_project/tests/ -v --browser chromium
 ```
 
-**5. Run everything with HTML report**
+**5. Run with HTML report**
 
 ```bash
-pytest -v --html=report.html --self-contained-html
+# API
+pytest my-api-tests/test_api.py -v --html=api-report.html --self-contained-html
+
+# UI
+pytest pom_project/tests/ -v --browser chromium --html=ui-report.html --self-contained-html
 ```
 
-Open `report.html` in your browser to view results.
+Open the generated `.html` file in your browser to view results.
 
 ---
 
@@ -184,18 +190,32 @@ def inventory_page(page):
 
 ## CI pipeline
 
-The GitHub Actions workflow runs automatically on every push to `main` and every pull request.
+Two jobs run in parallel on every push to `main` and every pull request.
 
-**Pipeline steps:**
+### api-tests job
 
 1. Checkout code
 2. Set up Python 3.13
-3. Install dependencies
-4. Install Playwright browsers
-5. Run all tests with verbose output
-6. Upload HTML report as artifact (runs even if tests fail)
+3. Install API dependencies (`pytest`, `httpx`, `pytest-html`)
+4. Run API tests with verbose output
+5. Upload `api-report.html` as artifact
 
-To view a test report: go to **Actions** → select a run → scroll to **Artifacts** → download `test-report`.
+### ui-tests job
+
+1. Checkout code
+2. Set up Python 3.13
+3. Install UI dependencies (`pytest`, `pytest-playwright`, `pytest-html`)
+4. Install Playwright Chromium with system dependencies (`--with-deps`)
+5. Run UI tests in headless Chromium
+6. Upload `ui-report.html` as artifact
+
+Both reports downloadable from **Actions** → select a run → **Artifacts**.
+
+### Important lessons learned
+
+- `pytest.ini` addopts must not contain Playwright-specific flags — they apply globally and break non-Playwright jobs
+- `playwright install chromium --with-deps` is required on Ubuntu CI runners — system-level browser dependencies are not pre-installed
+- All packages must be in `requirements.txt` — CI spins up a clean container on every run, local virtual environments don't carry over
 
 ---
 
