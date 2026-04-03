@@ -51,7 +51,7 @@ jobs:
         run: playwright install chromium --with-deps
 
       - name: Run UI tests
-        run: pytest pom_project/tests/ -v --html=ui-report.html --self-contained-html
+        run: pytest pom_project/tests/ -v --browser chromium --screenshot=only-on-failure --html=ui-report.html --self-contained-html
 
       - name: Upload UI test report
         uses: actions/upload-artifact@v4
