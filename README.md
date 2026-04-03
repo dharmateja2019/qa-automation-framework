@@ -27,12 +27,10 @@ A production-style test automation framework built with Python, demonstrating re
 
 ```
 ApiTesting/
-├── requirements.txt             # UI test dependencies (pytest, playwright, pytest-html)
-├── pytest.ini                   # minimal pytest config (no global addopts)
+├── requirements.txt             # API/UI test dependencies (pytest, playwright, pytest-html, httpx)
 │
 ├── my-api-tests/
 │   ├── conftest.py              # session-scoped API client fixture
-│   ├── requirements.txt         # API test dependencies (pytest, httpx, pytest-html)
 │   └── test_api.py              # API test cases
 │
 ├── pom_project/
@@ -40,9 +38,9 @@ ApiTesting/
 │   │   ├── login_page.py        # login page actions and locators
 │   │   └── inventory_page.py    # inventory page actions and locators
 │   └── tests/
-│       ├── conftest.py          # login_page and inventory_page fixtures
 │       ├── login_test.py        # login scenarios
 │       └── test_inventory.py    # inventory scenarios
+│   ├── conftest.py          # login_page and inventory_page fixtures
 │
 └── .github/
     └── workflows/
@@ -62,7 +60,6 @@ cd ApiTesting
 
 ```bash
 pip install -r requirements.txt
-pip install -r my-api-tests/requirements.txt
 playwright install chromium
 ```
 

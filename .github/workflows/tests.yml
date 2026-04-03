@@ -7,51 +7,44 @@ on:
     branches: [main]
 
 jobs:
-  api-tests:
+  qa-tests:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout code (only once)
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2. Setup Python (only once)
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
+      # 3. Install ALL dependencies (API + UI)
       - name: Install dependencies
-        run: pip install -r my-api-tests/requirements.txt
+        run: |
+          pip install -r requirements.txt
 
+      # 4. Run API tests (no browser needed)
       - name: Run API tests
         run: pytest my-api-tests/test_api.py -v --html=api-report.html --self-contained-html
 
+      # 5. Install Playwright ONLY before UI tests
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+
+      # 6. Run UI tests
+      - name: Run UI tests
+        run: pytest pom_project/tests/ -v --browser chromium --screenshot=only-on-failure --html=ui-report.html --self-contained-html
+
+      # 7. Upload reports (both)
       - name: Upload API test report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: api-test-report
           path: api-report.html
-
-  ui-tests:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install dependencies
-        run: pip install -r pom_project/requirements.txt
-
-      - name: Install Playwright browsers
-        run: playwright install chromium --with-deps
-
-      - name: Run UI tests
-        run: pytest pom_project/tests/ -v --browser chromium --screenshot=only-on-failure --html=ui-report.html --self-contained-html
 
       - name: Upload UI test report
         uses: actions/upload-artifact@v4
