@@ -1,0 +1,6 @@
+
+  [function fixture] created
+
+  running test_three
+
+  [function fixture] destroyed

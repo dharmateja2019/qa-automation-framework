@@ -34,19 +34,19 @@ jobs:
       - name: Install Playwright Chromium
         run: playwright install chromium --with-deps
 
-      # 6. Run UI tests
+      # 6. Run UI tests with Playwright and generate Allure results
       - name: Run UI tests
         env:
           BASE_URL: https://www.saucedemo.com
           DEFAULT_TIMEOUT: "30000"
-        run: pytest pom_project/tests/ -v --browser chromium -n auto --screenshot=only-on-failure --html=ui-report.html --self-contained-html
+        run: pytest pom_project/tests/ -v -n auto --browser chromium --alluredir=allure-results
 
-      - name: Upload screenshots
+      - name: Upload Allure results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: failure-screenshots
-          path: pom_project/screenshots/
+          name: allure-results
+          path: allure-results/
 
       # 7. Upload reports (both)
       - name: Upload API test report

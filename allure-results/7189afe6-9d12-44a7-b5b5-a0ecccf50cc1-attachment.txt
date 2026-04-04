@@ -1,0 +1,10 @@
+
+  [session fixture] created
+
+  [module fixture] created
+
+  [function fixture] created
+
+  running test_one
+
+  [function fixture] destroyed

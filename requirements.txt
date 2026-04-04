@@ -3,3 +3,4 @@ pytest
 pytest-html
 httpx
 pytest-xdist
+allure-pytest
