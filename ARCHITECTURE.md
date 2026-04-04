@@ -6,6 +6,7 @@ This document explains the key architectural decisions in this test automation f
 
 - 12 UI tests across 2 page objects, running in parallel in 19s inside Docker
 - API tests covering status codes, schema validation, and POST scenarios
+- K6 load tests mirroring functional API tests — with thresholds that fail CI on regression
 - Single command switches between dev, staging, and prod environments
 - Every failing test automatically captures a screenshot embedded in Allure report
 - Interactive Allure dashboard with feature grouping, severity filtering, and step breakdown
@@ -94,7 +95,7 @@ In CI, feedback speed matters. A developer pushes code and waits for test result
 
 ---
 
-## 7. Why Two Separate CI Jobs?
+## 7. Why Two Separate CI Jobs for Functional Tests?
 
 Initially this looked like it could be one job running all tests. But separate jobs are better.
 
@@ -115,12 +116,12 @@ Hardcoding URLs in test code requires code changes to switch environments. Want 
 
 With `BASE_URL = os.getenv("BASE_URL", "https://www.saucedemo.com")`, the same test file works everywhere:
 
-- Local development: `BASE_URL` env var isn't set, defaults to public demo site
-- CI testing staging: GitHub Actions sets `BASE_URL=https://staging.example.com`
-- Docker run: `docker run -e BASE_URL=https://staging.example.com qa-automation`
-- Production smoke tests: another job sets `BASE_URL=https://prod.example.com`
+- Local development: defaults to public demo site
+- CI staging: GitHub Actions sets `BASE_URL=https://staging.example.com`
+- Docker: `docker run -e BASE_URL=https://staging.example.com qa-automation`
+- Production smoke tests: another job sets the prod URL
 
-Same test code. No commits. Just environment variables. Different teams can run the same tests against their own environments without touching code.
+Same test code. No commits. Just environment variables.
 
 ---
 
@@ -130,15 +131,15 @@ pytest-html produces a static HTML file — useful but flat. One page, no filter
 
 Allure also separates raw results from the report. CI generates `allure-results/` — raw JSON files. The report is generated separately, meaning you can regenerate the report with historical data across multiple runs, showing trend graphs of pass rate over time. pytest-html shows only the current run.
 
-In CI, `allure serve` is intentionally not run — it starts a local web server and would hang the pipeline with no browser to open it. Instead the Allure CLI generates a static HTML report which is uploaded as an artifact. Team members download and run `allure open allure-report/` locally. Opening `index.html` directly via `file://` protocol blocks the JavaScript Allure needs — always serve via HTTP.
+In CI, `allure serve` is intentionally not run — it starts a local web server and would hang the pipeline with no browser to open it. The Allure CLI generates a static HTML report which is uploaded as an artifact. Team members run `allure open allure-report/` locally. Opening `index.html` directly via `file://` protocol blocks the JavaScript Allure needs — always serve via HTTP.
 
 ---
 
 ## 10. Why Docker?
 
-Without Docker, "works on my machine" is a real problem. The test suite runs on Mac with Python 3.13, on GitHub Actions with Ubuntu and Python 3.13, and on a colleague's Windows machine with whatever Python version they have installed. Browser driver versions, system library versions, and Python package versions all differ. Tests pass locally and fail in CI for infrastructure reasons, not test logic reasons.
+Without Docker, "works on my machine" is a real problem. The test suite runs on Mac with Python 3.13, on GitHub Actions with Ubuntu and Python 3.13, and on a colleague's Windows machine with whatever Python version they have installed. Browser driver versions, system library versions, and Python package versions all differ.
 
-Docker packages the entire test environment into a container — Python version, Playwright browser, all dependencies — using Microsoft's official Playwright Python base image. Any machine with Docker installed runs the exact same environment. The same container runs locally and in CI.
+Docker packages the entire test environment into a container using Microsoft's official Playwright Python base image. Any machine with Docker installed runs the exact same environment.
 
 ### Why pin the image version?
 
@@ -146,7 +147,60 @@ The Dockerfile uses `mcr.microsoft.com/playwright/python:v1.58.0-noble` not `lat
 
 ### Why copy requirements.txt before the project code?
 
-Docker builds in layers. Each instruction is a cached layer. If you copy everything first and then run pip install, any source file change invalidates the pip install layer — even if requirements didn't change. Copying `requirements.txt` first means pip install is only re-run when dependencies actually change. Source code changes only invalidate the `COPY . .` layer, keeping rebuilds fast.
+Docker builds in layers. Copying `requirements.txt` first means pip install is only re-run when dependencies actually change. Source code changes only invalidate the `COPY . .` layer, keeping rebuilds fast.
+
+---
+
+## 11. Why K6 for Performance Testing?
+
+Functional tests verify correctness — does the API return the right data? Performance tests verify behaviour under load — does it return the right data within acceptable time when 10 users hit it simultaneously?
+
+K6 was chosen over JMeter because tests are written as JavaScript code, not XML config files. This means performance tests live in the repo alongside functional tests, go through code review, and run in CI automatically. JMeter requires a GUI to create tests and produces XML that's hard to review in pull requests.
+
+### Why thresholds instead of just metrics?
+
+Without thresholds, K6 is just a load generator — it produces numbers but never fails. With thresholds:
+
+```javascript
+thresholds: {
+  'http_req_duration{name:get_post}': ['p(95)<400'],
+  http_req_failed: ['rate<0.01'],
+}
+```
+
+K6 exits with a non-zero code when thresholds are breached. The CI pipeline fails automatically — performance regressions are caught the same way functional regressions are. No manual checking of dashboards required.
+
+### Why p(95) and not average?
+
+Average response time hides outliers. If 94 requests complete in 10ms and 6 requests take 5 seconds, the average looks acceptable but 6% of users are having a terrible experience. p(95) means 95% of users get a response within that time — a meaningful user-experience metric.
+
+### Why ramp-up stages?
+
+Sending 10 users instantly from zero creates an unrealistic spike that can skew results. Real traffic ramps up. Stages simulate this:
+
+```javascript
+stages: [
+  { duration: "10s", target: 5 }, // ramp up
+  { duration: "20s", target: 10 }, // sustain at peak
+  { duration: "10s", target: 0 }, // ramp down
+];
+```
+
+The sustain phase gives stable results to measure against. The ramp-down prevents abrupt connection drops that can cause false failures.
+
+### How K6 mirrors functional tests
+
+K6 tests the same endpoints as pytest but asks a different question:
+
+```
+pytest: test_get_post_returns_200    → one request, assert status 200
+K6:    GET /posts/1 × 290 times     → assert status 200 AND p(95) < 400ms
+
+pytest: test_create_post_returns_201 → one request, assert status 201
+K6:    POST /posts × 299 times      → assert status 201 AND p(95) < 600ms
+```
+
+The K6 script deliberately mirrors the critical functional test paths so performance coverage tracks functional coverage.
 
 ---
 
@@ -164,5 +218,6 @@ Each decision connects to a real problem encountered either during development o
 - **Environment variables** make the same tests work in dev, staging, and production
 - **Allure** gives teams an interactive dashboard with severity filtering and embedded failure evidence
 - **Docker** guarantees identical environments — no "works on my machine" failures
+- **K6 thresholds** catch performance regressions automatically in CI — not just load generation
 
-Together they form a framework that scales: new pages inherit behaviour automatically, new environments switch without code changes, new teams use shared infrastructure without reimplementing it, and failures are visible and debuggable without access to the CI machine.
+Together they form a framework that scales: new pages inherit behaviour automatically, new environments switch without code changes, new teams use shared infrastructure without reimplementing it, failures are visible and debuggable without CI access, and performance regressions are caught before users notice them.

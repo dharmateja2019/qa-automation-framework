@@ -1,6 +1,6 @@
-# QA Automation Portfolio — Pytest + httpx + Playwright + Allure + Docker + GitHub Actions
+# QA Automation Portfolio — Pytest + httpx + Playwright + Allure + Docker + K6 + GitHub Actions
 
-A production-style test automation framework built with Python, demonstrating real-world patterns used in SDET roles at MNCs. Built progressively across 8 modules — API testing, UI automation with POM, fixture scopes, factory pattern, parallel execution, BasePage inheritance, Allure reporting, and Docker containerisation.
+A production-style test automation framework built with Python and JavaScript, demonstrating real-world patterns used in SDET roles at MNCs. Built progressively across 9 modules — API testing, UI automation with POM, fixture scopes, factory pattern, parallel execution, BasePage inheritance, Allure reporting, Docker containerisation, and K6 performance testing.
 
 ## What this project covers
 
@@ -17,7 +17,8 @@ A production-style test automation framework built with Python, demonstrating re
 - Screenshot on failure — embedded directly in Allure report
 - Allure reporting — interactive dashboard with steps, severity, feature grouping
 - Docker containerisation — consistent environment across all machines
-- Automated CI pipeline with GitHub Actions — two parallel jobs
+- K6 performance testing — load tests with thresholds, ramp-up stages, and CI integration
+- Automated CI pipeline with GitHub Actions — three parallel jobs
 - Allure results and report uploaded as CI artifacts
 
 ## Tech stack
@@ -31,6 +32,7 @@ A production-style test automation framework built with Python, demonstrating re
 | pytest-xdist      | Parallel test execution across multiple workers |
 | allure-pytest     | Allure reporting integration                    |
 | Docker            | Containerised test environment                  |
+| K6                | Performance and load testing                    |
 | GitHub Actions    | CI pipeline — runs on every push and PR         |
 
 ## Project structure
@@ -46,6 +48,9 @@ ApiTesting/
 │   ├── conftest.py                   # session-scoped API client fixture
 │   ├── requirements.txt              # API test dependencies
 │   └── test_api.py                   # API test cases
+│
+├── performance/
+│   └── api_load_test.js              # K6 load test — mirrors functional API tests
 │
 ├── pom_project/
 │   ├── core/
@@ -66,7 +71,7 @@ ApiTesting/
 │
 └── .github/
     └── workflows/
-        └── tests.yml                 # CI pipeline — parallel jobs, allure artifacts
+        └── tests.yml                 # CI — api-tests, ui-tests, performance-tests
 ```
 
 ## How to run locally
@@ -84,6 +89,7 @@ cd ApiTesting
 pip install -r requirements.txt
 pip install -r my-api-tests/requirements.txt
 playwright install chromium
+brew install k6
 ```
 
 **3. Run API tests**
@@ -92,90 +98,50 @@ playwright install chromium
 pytest my-api-tests/test_api.py -v
 ```
 
-**4. Run UI tests — sequential**
+**4. Run UI tests**
 
 ```bash
-pytest pom_project/tests/ -v --browser chromium
-```
-
-**5. Run UI tests — parallel**
-
-```bash
-pytest pom_project/tests/ -v --browser chromium -n 2
 pytest pom_project/tests/ -v --browser chromium -n auto
 ```
 
-**6. Run with Allure reporting**
+**5. Run with Allure reporting**
 
 ```bash
 pytest pom_project/tests/ -v --browser chromium -n 2 --alluredir=allure-results
 allure serve allure-results
 ```
 
-**7. Run by marker**
+**6. Run performance tests**
 
 ```bash
-pytest pom_project/tests/ -v --browser chromium -n auto -m "not slow"
-pytest pom_project/tests/ -v --browser chromium -m "slow"
+k6 run performance/api_load_test.js
+```
+
+**7. Run with Docker**
+
+```bash
+docker build -t qa-automation .
+docker run qa-automation
+docker run -v $(pwd)/allure-results:/app/allure-results qa-automation
 ```
 
 **8. Run against a different environment**
 
 ```bash
 BASE_URL=https://staging.saucedemo.com pytest pom_project/tests/ -v --browser chromium
-```
-
-## How to run with Docker
-
-**Build the image**
-
-```bash
-docker build -t qa-automation .
-```
-
-**Run tests inside container**
-
-```bash
-docker run qa-automation
-```
-
-**Run with Allure results exported locally**
-
-```bash
-docker run -v $(pwd)/allure-results:/app/allure-results qa-automation
-allure serve allure-results
-```
-
-**Run against a different environment**
-
-```bash
-docker run -e BASE_URL=https://staging.saucedemo.com qa-automation
-```
-
-**Override default command**
-
-```bash
-docker run qa-automation pytest my-api-tests/test_api.py -v
+docker run -e BASE_URL=https://staging.example.com qa-automation
 ```
 
 ---
 
 ## Viewing Allure reports from CI
 
-After a CI run completes:
-
 1. Go to **Actions** → select the run → scroll to **Artifacts**
 2. Download the `allure-report` artifact
 3. Unzip the downloaded file
-4. Run in terminal:
+4. Run: `allure open allure-report/`
 
-```bash
-allure open allure-report/
-```
-
-5. Full interactive Allure dashboard opens automatically in your browser
-
-**Important:** do not open `index.html` directly from the file system. Browsers block the JavaScript required by Allure when loaded via `file://` protocol — the report will show "Loading..." forever. Always use `allure open` or `python3 -m http.server`.
+**Important:** do not open `index.html` directly — use `allure open` or `python3 -m http.server`. The `file://` protocol blocks Allure's JavaScript.
 
 ---
 
@@ -187,39 +153,29 @@ Tests run against [JSONPlaceholder](https://jsonplaceholder.typicode.com) — a 
 
 **Status code tests**
 
-- Valid post IDs return `200`
-- Non-existent post IDs return `404`
+- Valid post IDs return `200`, non-existent IDs return `404`
 - Parametrized across multiple IDs in one test function
 
 **Schema validation tests**
 
-- Every field (`id`, `title`, `body`, `userId`) is present
-- Field types are correct — not just values
+- Every field (`id`, `title`, `body`, `userId`) present and correctly typed
 - Response `id` matches the requested `id`
 
 **POST tests**
 
-- Creating a post returns `201`
-- Response body reflects the submitted payload
-- Multiple payload variations tested using parametrize
+- Creating a post returns `201` with correct response body
+- Multiple payload variations via parametrize
 
 ### Key patterns
-
-**Session-scoped fixture** — one HTTP client shared across all tests:
 
 ```python
 @pytest.fixture(scope="session")
 def api_client():
     with httpx.Client(base_url="...") as client:
         yield client
-```
 
-**Parametrize** — one test function covers multiple scenarios:
-
-```python
 @pytest.mark.parametrize("post_id, expected_status", [
-    (1, 200),
-    (99999, 404),
+    (1, 200), (99999, 404),
 ])
 def test_get_post_status(post_id, expected_status):
     ...
@@ -229,54 +185,31 @@ def test_get_post_status(post_id, expected_status):
 
 ## Module 2 — UI automation with Page Object Model
 
-Tests run against [SauceDemo](https://www.saucedemo.com) — a demo e-commerce site built for automation practice.
+Tests run against [SauceDemo](https://www.saucedemo.com).
 
 ### What is tested
 
-**Login scenarios**
-
-- Valid credentials redirect to inventory page
-- Invalid password shows correct error message
-- Empty username shows validation error
-- Locked-out user cannot log in
-
-**Inventory scenarios**
-
-- Page loads exactly 6 products
-- All product names are non-empty strings
-- Adding first product updates cart badge to 1
-- Page title is correct (via BasePage)
-- Current URL contains "inventory" (via BasePage)
-- Performance glitch user eventually lands on inventory (marked `slow`)
+- Valid/invalid login scenarios
+- Locked-out user behaviour
+- Inventory page load, product count, cart badge
+- Page title and URL via BasePage methods
 
 ### POM design decisions
 
-**No assertions in page classes** — page objects describe what a page _can do_, not what _should be true_.
-
-**Locators defined once** — UI changes require updating one place, not every test.
-
-**Fixture handles navigation:**
-
-```python
-@pytest.fixture(scope="function")
-def inventory_page(page):
-    user = UserFactory.standard()
-    lp = LoginPage(page)
-    lp.navigate()
-    lp.login(user.username, user.password)
-    return InventoryPage(page)
-```
+- No assertions in page classes — pages describe _what can be done_, tests decide _what should be true_
+- Locators defined once — UI changes require updating one place
+- Fixtures handle navigation — tests start at the right state automatically
+- Page chaining — same `page` object flows through multiple page objects
 
 ---
 
 ## Module 3 — Fixture scopes
 
-| Scope      | Created          | Destroyed                | Use for                            |
-| ---------- | ---------------- | ------------------------ | ---------------------------------- |
-| `function` | Before each test | After each test          | Browser, page, anything with state |
-| `module`   | Once per file    | After last test in file  | File-level shared resources        |
-| `session`  | Once per run     | After all tests finish   | Stateless HTTP clients             |
-| `class`    | Once per class   | After last test in class | OOP-heavy suites                   |
+| Scope      | Use for                            |
+| ---------- | ---------------------------------- |
+| `function` | Browser, page, anything with state |
+| `session`  | Stateless HTTP clients             |
+| `module`   | File-level shared resources        |
 
 Session scope does not cross xdist worker boundaries — always use function scope for browser in parallel runs.
 
@@ -287,25 +220,22 @@ Session scope does not cross xdist worker boundaries — always use function sco
 ```python
 UserFactory.standard()               # default valid user
 UserFactory.locked()                 # locked out user
-UserFactory.slow()                   # performance glitch user
 UserFactory.build(password="wrong")  # override only what matters
 ```
 
-Credentials defined in one place. Tests declare intent, not setup.
+Credentials in one place. Tests declare intent, not setup.
 
 ---
 
 ## Module 5 — Parallel execution with pytest-xdist
 
-### Observed timing (12 tests)
-
-| Mode       | Workers | Time | Environment      |
-| ---------- | ------- | ---- | ---------------- |
-| Sequential | 1       | ~30s | Local Mac        |
-| `-n 2`     | 2       | ~15s | Local Mac        |
-| `-n auto`  | 16      | ~13s | Local Mac        |
-| `-n auto`  | 4       | ~12s | GitHub Actions   |
-| `-n auto`  | 4       | ~19s | Docker container |
+| Mode       | Workers | Time | Environment    |
+| ---------- | ------- | ---- | -------------- |
+| Sequential | 1       | ~30s | Local Mac      |
+| `-n 2`     | 2       | ~15s | Local Mac      |
+| `-n auto`  | 16      | ~13s | Local Mac      |
+| `-n auto`  | 4       | ~12s | GitHub Actions |
+| `-n auto`  | 4       | ~19s | Docker         |
 
 ```bash
 pytest -n auto -m "not slow"   # fast tests in parallel
@@ -329,115 +259,131 @@ class LoginPage(BasePage):
         # login-specific locators only
 ```
 
-Config driven by environment variables — same tests, different environments:
-
-```bash
-BASE_URL=https://staging.example.com pytest pom_project/tests/
-docker run -e BASE_URL=https://staging.example.com qa-automation
-```
-
 ---
 
 ## Module 7 — Allure reporting
 
-| Feature          | pytest-html      | Allure                              |
-| ---------------- | ---------------- | ----------------------------------- |
-| Report type      | Static HTML file | Interactive dashboard               |
-| Test grouping    | None             | By feature, story, severity         |
-| Step breakdown   | No               | Yes — per test                      |
-| Screenshot embed | Separate folder  | Inline in failing test              |
-| Trend history    | No               | Yes — across runs                   |
-| Severity filter  | No               | BLOCKER / CRITICAL / NORMAL / MINOR |
-
-```python
-@allure.feature("Login")
-@allure.severity(allure.severity_level.CRITICAL)
-def test_valid_login(login_page, page):
-    with allure.step("Login with valid credentials"):
-        login_page.login(user.username, user.password)
-```
+| Feature          | pytest-html     | Allure                     |
+| ---------------- | --------------- | -------------------------- |
+| Report type      | Static HTML     | Interactive dashboard      |
+| Test grouping    | None            | Feature / story / severity |
+| Step breakdown   | No              | Yes                        |
+| Screenshot embed | Separate folder | Inline in failing test     |
+| Trend history    | No              | Yes                        |
 
 ---
 
 ## Module 8 — Docker containerisation
 
-### Dockerfile
-
 ```dockerfile
 FROM mcr.microsoft.com/playwright/python:v1.58.0-noble
-
 WORKDIR /app
-
 COPY requirements.txt .
 RUN pip install -r requirements.txt
-
 COPY . .
-
 CMD ["pytest", "pom_project/tests/", "-v", "--browser", "chromium", "-n", "auto", "--alluredir=allure-results"]
 ```
 
-### Why pin the image version?
+Key decisions: pin image version (not `latest`), copy `requirements.txt` before source for layer caching, `.dockerignore` excludes cache and results.
 
-Using `latest` means the base image updates silently — one day the pip-installed Playwright version mismatches the browser bundled in the image and all tests fail with a cryptic executable error. Pinning to `v1.58.0-noble` means you control when to upgrade — you update the image tag and `requirements.txt` together deliberately.
+---
 
-### Layer caching
+## Module 9 — K6 performance testing
 
-`requirements.txt` is copied and installed before the project code. Docker caches each layer — if dependencies don't change, `pip install` is skipped on rebuild. Only changed source files invalidate the cache, keeping rebuilds fast.
+### How K6 relates to pytest
 
-### .dockerignore
+Pytest asks: _does it work correctly?_ — one request, one assertion.
+K6 asks: _does it work correctly under load?_ — same endpoints, hundreds of concurrent requests, with thresholds that fail the build on regression.
 
-Excludes `__pycache__`, `.pytest_cache`, `allure-results`, `allure-report`, `screenshots`, `.git`, and virtual environments from the image. Smaller image, faster builds, no stale results bleeding into container runs.
+### Script structure
+
+```javascript
+export const options = {
+  stages: [
+    { duration: "10s", target: 5 }, // ramp up
+    { duration: "20s", target: 10 }, // sustain
+    { duration: "10s", target: 0 }, // ramp down
+  ],
+  thresholds: {
+    "http_req_duration{name:get_post}": ["p(95)<400"],
+    "http_req_duration{name:create_post}": ["p(95)<600"],
+    http_req_failed: ["rate<0.01"],
+  },
+};
+```
+
+### Results observed (JSONPlaceholder)
+
+| Metric            | Result     | Threshold |
+| ----------------- | ---------- | --------- |
+| get_post p(95)    | 41ms       | < 400ms ✓ |
+| create_post p(95) | 45ms       | < 600ms ✓ |
+| failure rate      | 0.00%      | < 1% ✓    |
+| throughput        | 14.5 req/s | —         |
+
+### Key concepts
+
+`p(95)` — 95th percentile response time. Industry standard metric — not average, which hides outliers.
+
+`thresholds` — pass/fail criteria. K6 exits non-zero when breached — CI pipeline fails automatically, same as a failing unit test.
+
+`stages` — ramp-up pattern simulates realistic traffic. Instant spikes skew results.
+
+`groups + tags` — separate thresholds per endpoint. List endpoint can be slower than single-item endpoint.
+
+`sleep(1)` — think time between requests. Simulates real user behaviour, prevents unrealistic hammering.
+
+### Mirrors functional tests
+
+```
+pytest: test_get_post_returns_200    → K6: GET /posts/1, check status 200
+pytest: test_create_post_returns_201 → K6: POST /posts, check status 201
+pytest: test_post_schema_is_correct  → K6: GET /posts/1, check title exists
+```
 
 ---
 
 ## CI pipeline
 
-Two jobs run in parallel on every push to `main` and every pull request.
+Three jobs run in parallel on every push to `main` and every pull request.
 
 ### api-tests job
 
-1. Checkout code
-2. Set up Python 3.13
-3. Install API dependencies
-4. Run API tests
-5. Upload `api-report.html` as artifact
+1. Install dependencies → run API tests → upload report
 
 ### ui-tests job
 
-1. Checkout code
-2. Set up Python 3.13
-3. Install UI dependencies
-4. Install Playwright Chromium with system dependencies
-5. Run UI tests in parallel with `-n auto`
-6. Upload `allure-results/` as artifact
-7. Install Allure CLI
-8. Generate static `allure-report/`
-9. Upload `allure-report/` as artifact
+1. Install dependencies + Playwright → run tests with `-n auto` → generate Allure report → upload artifacts
+
+### performance-tests job
+
+1. Install K6 → run `api_load_test.js` → fail pipeline if thresholds breached
 
 ### Important lessons learned
 
+- K6 uses its own Go-based runtime — not Node.js, can't import Python fixtures
 - Pin Docker image versions — `latest` causes silent Playwright/browser version mismatches
-- `allure serve` must not be run in CI — hangs the pipeline with no browser
-- Allure static report must be served via HTTP — `file://` protocol blocks JavaScript
-- `pytest.ini` addopts must not contain Playwright flags — breaks non-Playwright jobs
+- `allure serve` must not be run in CI — hangs with no browser
+- Allure report must be served via HTTP — `file://` blocks JavaScript
+- `pytest.ini` addopts must not contain Playwright flags
 - `playwright install chromium --with-deps` required on Ubuntu CI
-- All packages must be in `requirements.txt` — CI starts clean every run
-- `-n auto` adapts to environment — 16 workers locally, 4 on GitHub Actions, 4 in Docker
+- `-n auto` adapts to environment — 16 workers locally, 4 in CI and Docker
 
 ---
 
 ## Testing strategy applied
 
-- **Test pyramid** — API tests at integration layer, UI tests only for critical E2E flows
+- **Test pyramid** — API tests at integration layer, UI tests for critical E2E flows, performance tests for load validation
 - **Shift-left** — CI runs on every PR, not just before release
 - **Risk-based** — login and cart flows automated first as highest business impact
-- **POM separation of concerns** — page layer owns locators and actions, test layer owns assertions
+- **POM separation of concerns** — page layer owns locators, test layer owns assertions
 - **BasePage inheritance** — shared behaviour defined once, inherited everywhere
 - **Factory pattern** — test data centralised, tests declare intent not setup
 - **Parallel execution** — xdist with function-scoped browsers, markers for fast vs slow
-- **Environment config** — BASE_URL driven by env vars, no hardcoded URLs in test code
+- **Environment config** — BASE_URL driven by env vars, no hardcoded URLs
 - **Allure reporting** — interactive dashboard with severity filtering and embedded screenshots
 - **Docker** — pinned base image guarantees identical environment on every machine
+- **K6 thresholds** — performance regressions caught automatically in CI
 
 ---
 
