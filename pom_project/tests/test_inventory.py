@@ -4,9 +4,6 @@ import pytest
 
 from test_data.user_factory import UserFactory
 
-def test_inventory_loads_six_products(inventory_page,page):
-    
-    assert inventory_page.get_product_count() == 6
 
 def test_product_names_are_not_empty(inventory_page,page):
     
@@ -35,3 +32,7 @@ def test_current_url_after_login(inventory_page):
     # get_current_url() also from BasePage
     url = inventory_page.get_current_url()
     assert "inventory" in url
+
+# in test_inventory.py temporarily
+def test_inventory_loads_six_products(inventory_page):
+    assert inventory_page.get_product_count() == 6  # wrong on purpose

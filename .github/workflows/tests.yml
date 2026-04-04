@@ -36,7 +36,17 @@ jobs:
 
       # 6. Run UI tests
       - name: Run UI tests
+        env:
+          BASE_URL: https://www.saucedemo.com
+          DEFAULT_TIMEOUT: "30000"
         run: pytest pom_project/tests/ -v --browser chromium -n auto --screenshot=only-on-failure --html=ui-report.html --self-contained-html
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: failure-screenshots
+          path: pom_project/screenshots/
 
       # 7. Upload reports (both)
       - name: Upload API test report
