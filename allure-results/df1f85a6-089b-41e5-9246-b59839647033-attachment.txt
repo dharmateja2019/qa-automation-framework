@@ -1,4 +1,0 @@
-
-  [module fixture] destroyed
-
-  [session fixture] destroyed
