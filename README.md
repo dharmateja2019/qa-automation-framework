@@ -53,6 +53,7 @@ qa-automation-framework/
 │   │   └── product_factory.py
 │   └── tests/
 │       ├── __init__.py
+│       ├── conftest.py
 │       ├── login_test.py
 │       ├── test_inventory.py
 │       └── test_fixture_scopes.py
